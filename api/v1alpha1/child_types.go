@@ -59,6 +59,6 @@ type ChildList struct {
 	Items           []Child `json:"items"`
 }
 
-func init() {
+func init() { //nolint:gochecknoinits
 	SchemeBuilder.Register(&Child{}, &ChildList{})
 }
