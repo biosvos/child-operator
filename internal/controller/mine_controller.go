@@ -19,16 +19,13 @@ package controller
 import (
 	"context"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	samplev1alpha1 "github.com/biosvos/child-operator/api/v1alpha1"
 	"github.com/pkg/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // MineReconciler reconciles a Mine object
@@ -51,10 +48,15 @@ func (r *MineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	log.Info("after get")
-
 	child, err := r.ClaimChild(ctx, &mine)
 	if err != nil {
+		if errors.Is(err, ErrRetriable) {
+			return ctrl.Result{Requeue: true}, nil
+		}
+		if errors.Is(err, ErrTooManyChildren) {
+			log.Error(err, "not handle too many children")
+			return ctrl.Result{}, nil
+		}
 		return ctrl.Result{}, err
 	}
 
@@ -62,70 +64,39 @@ func (r *MineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	return ctrl.Result{}, r.Status().Update(ctx, &mine)
 }
 
+func retryError(err error) error {
+	if err != nil {
+		return err
+	}
+	return errors.WithStack(ErrRetriable)
+}
+
 func (r *MineReconciler) ClaimChild(ctx context.Context, mine *samplev1alpha1.Mine) (*samplev1alpha1.Child, error) {
 	if mine.Status.ChildResourceName == "" {
-		var list samplev1alpha1.ChildList
-		err := r.List(ctx, &list,
-			client.InNamespace(mine.Namespace),
-			client.MatchingLabels(map[string]string{
-				"mine": mine.GetName(),
-			}),
-		)
+		child, err := getChildByLabels(ctx, r.Client, mine)
 		if err != nil {
+			if errors.Is(err, ErrNotFoundChild) {
+				err := createChild(ctx, r.Client, mine)
+				return nil, retryError(err)
+			}
 			return nil, err
 		}
-		switch len(list.Items) {
-		case 0:
-			child := &samplev1alpha1.Child{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace:    mine.GetNamespace(),
-					GenerateName: "child-",
-					Labels: map[string]string{
-						"mine": mine.GetName(),
-					},
-				},
-				Spec:   samplev1alpha1.ChildSpec{},
-				Status: samplev1alpha1.ChildStatus{},
-			}
-			err := controllerutil.SetControllerReference(mine, child, r.Scheme)
-			if err != nil {
-				return nil, err
-			}
-			err = r.Create(ctx, child)
-			if err != nil {
-				return nil, err
-			}
-			return nil, errors.New("retry")
-		case 1:
-			clone := mine.DeepCopy()
-			clone.Status.ChildResourceName = list.Items[0].GetName()
-			err := r.Status().Update(ctx, clone)
-			if err != nil {
-				return nil, err
-			}
-			return nil, errors.New("retry")
-		default:
-			panic("처리 포기")
-		}
+		clone := mine.DeepCopy()
+		clone.Status.ChildResourceName = child.GetName()
+		err = r.Status().Update(ctx, clone)
+		return nil, retryError(err)
 	}
-	var child samplev1alpha1.Child
-	err := r.Get(ctx, client.ObjectKey{
-		Namespace: mine.GetNamespace(),
-		Name:      mine.Status.ChildResourceName,
-	}, &child)
+	child, err := getChildByName(ctx, r.Client, mine)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
+		if errors.Is(err, ErrNotFoundChild) {
 			clone := mine.DeepCopy()
 			clone.Status.ChildResourceName = ""
 			err := r.Status().Update(ctx, clone)
-			if err != nil {
-				return nil, err
-			}
-			return nil, errors.New("retry")
+			return nil, retryError(err)
 		}
 		return nil, err
 	}
-	return &child, nil
+	return child, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
