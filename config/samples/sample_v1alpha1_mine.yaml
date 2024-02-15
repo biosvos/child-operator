@@ -1,0 +1,12 @@
+apiVersion: sample.my.domain/v1alpha1
+kind: Mine
+metadata:
+  labels:
+    app.kubernetes.io/name: mine
+    app.kubernetes.io/instance: mine-sample
+    app.kubernetes.io/part-of: child-operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: child-operator
+  name: mine-sample
+spec:
+  # TODO(user): Add fields here

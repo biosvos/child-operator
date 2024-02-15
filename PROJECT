@@ -7,4 +7,22 @@ layout:
 - go.kubebuilder.io/v4
 projectName: child-operator
 repo: github.com/biosvos/child-operator
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: my.domain
+  group: sample
+  kind: Mine
+  path: github.com/biosvos/child-operator/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  domain: my.domain
+  group: sample
+  kind: Child
+  path: github.com/biosvos/child-operator/api/v1alpha1
+  version: v1alpha1
 version: "3"

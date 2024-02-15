@@ -25,3 +25,4 @@ linters:
     - lll
     - gci
     - goimports
+    - tagliatelle

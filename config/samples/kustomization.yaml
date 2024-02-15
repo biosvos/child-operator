@@ -1,0 +1,5 @@
+## Append samples of your project ##
+resources:
+- sample_v1alpha1_mine.yaml
+- sample_v1alpha1_child.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples

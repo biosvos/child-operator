@@ -1,0 +1,27 @@
+# permissions for end users to view children.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: child-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: child-operator
+    app.kubernetes.io/part-of: child-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: child-viewer-role
+rules:
+- apiGroups:
+  - sample.my.domain
+  resources:
+  - children
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - sample.my.domain
+  resources:
+  - children/status
+  verbs:
+  - get
