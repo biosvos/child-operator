@@ -1,4 +1,4 @@
-module github.com/biosvos/go-template
+module github.com/biosvos/child-operator
 
 go 1.22
 

@@ -3,7 +3,7 @@ package flow_test
 import (
 	"testing"
 
-	"github.com/biosvos/go-template/flow"
+	"github.com/biosvos/child-operator/flow"
 	"github.com/stretchr/testify/require"
 )
 
