@@ -215,4 +215,4 @@ validate:
 	# sudo cp ~/go/bin/golangci-lint /usr/local/bin/
 	golangci-lint run
 	go test ./...
-	go build
+	go build -o bin/manager cmd/main.go
