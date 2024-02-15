@@ -1,0 +1,27 @@
+linters:
+  enable-all: true
+  disable:
+    - gofumpt
+    - ireturn
+    - varnamelen
+    - prealloc
+    - ifshort
+    - nlreturn
+    - depguard
+    - wsl
+    - interfacer
+    - exhaustivestruct
+    - godox
+    - exhaustruct
+    - godot
+    - varcheck
+    - nosnakecase
+    - deadcode
+    - golint
+    - structcheck
+    - maligned
+    - scopelint
+    - gosimple
+    - lll
+    - gci
+    - goimports

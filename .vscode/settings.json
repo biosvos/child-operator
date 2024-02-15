@@ -1,0 +1,4 @@
+{
+    "go.gopath": "${env:HOME}/.gvm/pkgsets/go1.22.0/global",
+    "go.goroot": "${env:HOME}/.gvm/gos/go1.22.0",
+}
