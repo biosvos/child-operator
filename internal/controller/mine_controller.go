@@ -39,7 +39,7 @@ type MineReconciler struct {
 //+kubebuilder:rbac:groups=sample.my.domain,resources=mines/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=sample.my.domain,resources=mines/finalizers,verbs=update
 
-func (r *MineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *MineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) { //nolint:cyclop
 	log := log.FromContext(ctx)
 	log.Info("reconcile")
 
