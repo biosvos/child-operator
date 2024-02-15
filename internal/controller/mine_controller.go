@@ -19,12 +19,16 @@ package controller
 import (
 	"context"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	samplev1alpha1 "github.com/biosvos/child-operator/api/v1alpha1"
+	"github.com/pkg/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // MineReconciler reconciles a Mine object
@@ -37,26 +41,97 @@ type MineReconciler struct {
 //+kubebuilder:rbac:groups=sample.my.domain,resources=mines/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=sample.my.domain,resources=mines/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Mine object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.0/pkg/reconcile
 func (r *MineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	log := log.FromContext(ctx)
+	log.Info("reconcile")
 
-	// TODO(user): your logic here
+	var mine samplev1alpha1.Mine
+	err := r.Get(ctx, req.NamespacedName, &mine)
+	if err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
 
-	return ctrl.Result{}, nil
+	log.Info("after get")
+
+	child, err := r.ClaimChild(ctx, &mine)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	mine.Status.CopyChildStatus = child.Spec.Status
+	return ctrl.Result{}, r.Status().Update(ctx, &mine)
+}
+
+func (r *MineReconciler) ClaimChild(ctx context.Context, mine *samplev1alpha1.Mine) (*samplev1alpha1.Child, error) {
+	if mine.Status.ChildResourceName == "" {
+		var list samplev1alpha1.ChildList
+		err := r.List(ctx, &list,
+			client.InNamespace(mine.Namespace),
+			client.MatchingLabels(map[string]string{
+				"mine": mine.GetName(),
+			}),
+		)
+		if err != nil {
+			return nil, err
+		}
+		switch len(list.Items) {
+		case 0:
+			child := &samplev1alpha1.Child{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:    mine.GetNamespace(),
+					GenerateName: "child-",
+					Labels: map[string]string{
+						"mine": mine.GetName(),
+					},
+				},
+				Spec:   samplev1alpha1.ChildSpec{},
+				Status: samplev1alpha1.ChildStatus{},
+			}
+			err := controllerutil.SetControllerReference(mine, child, r.Scheme)
+			if err != nil {
+				return nil, err
+			}
+			err = r.Create(ctx, child)
+			if err != nil {
+				return nil, err
+			}
+			return nil, errors.New("retry")
+		case 1:
+			clone := mine.DeepCopy()
+			clone.Status.ChildResourceName = list.Items[0].GetName()
+			err := r.Status().Update(ctx, clone)
+			if err != nil {
+				return nil, err
+			}
+			return nil, errors.New("retry")
+		default:
+			panic("처리 포기")
+		}
+	}
+	var child samplev1alpha1.Child
+	err := r.Get(ctx, client.ObjectKey{
+		Namespace: mine.GetNamespace(),
+		Name:      mine.Status.ChildResourceName,
+	}, &child)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			clone := mine.DeepCopy()
+			clone.Status.ChildResourceName = ""
+			err := r.Status().Update(ctx, clone)
+			if err != nil {
+				return nil, err
+			}
+			return nil, errors.New("retry")
+		}
+		return nil, err
+	}
+	return &child, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *MineReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr). //nolint:wrapcheck
-							For(&samplev1alpha1.Mine{}).
-							Complete(r)
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&samplev1alpha1.Mine{}).
+		Owns(&samplev1alpha1.Child{}).
+		Complete(r)
 }
