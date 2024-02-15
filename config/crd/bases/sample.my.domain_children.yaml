@@ -39,9 +39,7 @@ spec:
           spec:
             description: ChildSpec defines the desired state of Child
             properties:
-              foo:
-                description: Foo is an example field of Child. Edit child_types.go
-                  to remove/update
+              status:
                 type: string
             type: object
           status:

@@ -25,11 +25,7 @@ import (
 
 // ChildSpec defines the desired state of Child
 type ChildSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of Child. Edit child_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	Status string `json:"status,omitempty"`
 }
 
 // ChildStatus defines the observed state of Child
