@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -48,56 +49,82 @@ func (r *MineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	child, err := r.ClaimChild(ctx, &mine)
-	if err != nil {
-		if errors.Is(err, ErrRetriable) {
-			return ctrl.Result{Requeue: true}, nil
-		}
-		if errors.Is(err, ErrTooManyChildren) {
-			log.Error(err, "not handle too many children")
-			return ctrl.Result{}, nil
-		}
-		return ctrl.Result{}, err
-	}
+	action := GetChildByName
+	var child *samplev1alpha1.Child
+	for {
+		switch action {
+		case NoAction:
+			return ctrl.Result{}, err
 
-	mine.Status.CopyChildStatus = child.Spec.Status
-	return ctrl.Result{}, r.Status().Update(ctx, &mine)
-}
-
-func retryError(err error) error {
-	if err != nil {
-		return err
-	}
-	return errors.WithStack(ErrRetriable)
-}
-
-func (r *MineReconciler) ClaimChild(ctx context.Context, mine *samplev1alpha1.Mine) (*samplev1alpha1.Child, error) {
-	if mine.Status.ChildResourceName == "" {
-		child, err := getChildByLabels(ctx, r.Client, mine)
-		if err != nil {
-			if errors.Is(err, ErrNotFoundChild) {
-				err := createChild(ctx, r.Client, mine)
-				return nil, retryError(err)
+		case GetChildByName:
+			child, action, err = r.handleGetChildByName(ctx, &mine)
+			if err != nil {
+				return ctrl.Result{}, err
 			}
-			return nil, err
+
+		case GetChildByLabels:
+			child, action, err = r.handleGetChildByLabels(ctx, &mine)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+
+		case CreateChildResourceAction:
+			return ctrl.Result{}, createChild(ctx, r.Client, &mine)
+
+		case SetChildResourceNameAction:
+			mine.Status.ChildResourceName = child.GetName()
+			return ctrl.Result{}, r.Status().Update(ctx, &mine)
+
+		case ClearChildResourceNameAction:
+			mine.Status.ChildResourceName = ""
+			return ctrl.Result{}, r.Status().Update(ctx, &mine)
+
+		case ContinueAction:
+			mine.Status.CopyChildStatus = child.Spec.Status
+			return ctrl.Result{}, r.Status().Update(ctx, &mine)
+
+		default:
+			panic(fmt.Sprintf("unknown action: %v", action))
 		}
-		clone := mine.DeepCopy()
-		clone.Status.ChildResourceName = child.GetName()
-		err = r.Status().Update(ctx, clone)
-		return nil, retryError(err)
+	}
+}
+
+func (r *MineReconciler) handleGetChildByName(ctx context.Context, mine *samplev1alpha1.Mine) (*samplev1alpha1.Child, Action, error) {
+	if mine.Status.ChildResourceName == "" {
+		return nil, GetChildByLabels, nil
 	}
 	child, err := getChildByName(ctx, r.Client, mine)
 	if err != nil {
 		if errors.Is(err, ErrNotFoundChild) {
-			clone := mine.DeepCopy()
-			clone.Status.ChildResourceName = ""
-			err := r.Status().Update(ctx, clone)
-			return nil, retryError(err)
+			return nil, ClearChildResourceNameAction, nil
 		}
-		return nil, err
+		return nil, NoAction, err
 	}
-	return child, nil
+	return child, ContinueAction, nil
 }
+
+func (r *MineReconciler) handleGetChildByLabels(ctx context.Context, mine *samplev1alpha1.Mine) (*samplev1alpha1.Child, Action, error) {
+	child, err := getChildByLabels(ctx, r.Client, mine)
+	if err != nil {
+		if errors.Is(err, ErrNotFoundChild) {
+			return nil, CreateChildResourceAction, nil
+		}
+		return nil, NoAction, err
+	}
+	return child, SetChildResourceNameAction, nil
+}
+
+type Action string
+
+const (
+	NoAction                     = Action("no")
+	ContinueAction               = Action("continue")
+	ClearChildResourceNameAction = Action("clear child resource name")
+	SetChildResourceNameAction   = Action("set child resource name")
+	CreateChildResourceAction    = Action("create child resource")
+	GetChildByName               = Action("get child by name")
+	GetChildByLabels             = Action("get child by labels")
+)
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *MineReconciler) SetupWithManager(mgr ctrl.Manager) error {
